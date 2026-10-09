@@ -1,0 +1,5 @@
+# 保证 .cmd 脚本在任何机器上都是 Windows 换行（否则双击会报奇怪的错）
+*.cmd text eol=crlf
+
+# 其余文本统一用 LF
+* text=auto eol=lf
