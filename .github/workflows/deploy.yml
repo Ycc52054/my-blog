@@ -26,6 +26,9 @@ jobs:
       - name: 生成静态网页
         run: node build.js
       - uses: actions/configure-pages@v5
+        with:
+          # 尝试自动开启仓库的 Pages（省去手动去 Settings 里点一遍）
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
