@@ -3,10 +3,14 @@
 一个零依赖的静态知识库：笔记用 Markdown 写，一条命令生成网站，`dist/` 丢到哪里都能跑。
 适合「学了东西先记下来，以后回头翻」的用法。
 
+**线上地址：https://ycc52054.github.io/my-blog/** —— 推送到 GitHub 后会自动更新，上线过程见 [DEPLOY.md](DEPLOY.md)。
+
 ## 快速开始
 
 最简单的用法：双击 `start.cmd`，浏览器会自动打开 http://localhost:4321，看完关掉那个黑色窗口即可。
 它是「构建 + 启动预览」两件事合在一起做的。
+
+写完（或改完）笔记想发布到线上，双击 **`publish.cmd`** 就行：它会先生成网页、检查语法，然后提交并推送，GitHub 那边自动重新部署。
 
 想用命令行的话：
 
@@ -17,6 +21,18 @@ node serve.js                                      # 本地预览 http://localho
 ```
 
 `npm run dev` 等于「构建 + 预览」。
+
+## 日常写笔记的完整流程
+
+```powershell
+node new.js flex-layout "Flex 布局速查" 前端,CSS   # 1. 新建笔记（也可以直接复制现有的 .md 改）
+# 2. 用编辑器写内容，存盘
+node build.js                                      # 3. 本地生成、检查有没有写错
+node serve.js                                      # 4. 本地预览 http://localhost:4321
+git add . ; git commit -m "新增：Flex 布局速查" ; git push   # 5. 发布上线
+```
+
+第 5 步也可以直接双击 `publish.cmd` 代替。
 
 > 网页打不开时先看两件事：**黑色的预览窗口是不是被关掉了**，以及地址是不是 `http://localhost:4321`。
 > 直接双击 `dist/index.html` 也能看页面，但那样搜索功能会失效，因为浏览器不允许本地文件读取 `search.json`。
