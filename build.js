@@ -45,6 +45,9 @@ const escapeHtml = (s) =>
 
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
 
+/** 笔记的网址：中文文件名要转成 %XX 编码，链接才在各种浏览器/托管上都稳 */
+const postHref = (slug) => `posts/${encodeURIComponent(slug)}.html`;
+
 /** 去掉 Markdown 标记，留纯文本（用于摘要、目录、搜索索引） */
 function stripMd(s) {
   return String(s)
@@ -74,21 +77,73 @@ const tagFile = (t) =>
 
 function renderInline(s, ctx) {
   return s
+    // 图片：本地相对路径（如 assets/images/a.png）会自动补上层级前缀
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_, alt, src) => {
+      const fixed = /^(https?:|\/|\.{1,2}\/)/.test(src) ? src : ctx.base + src;
+      return `<img src="${fixed}" alt="${alt}" loading="lazy">`;
+    })
     .replace(WIKILINK_RE, (_, target, label) => {
       const t = target.trim();
       const text = (label || t).trim();
       const slug = ctx.resolve(t);
-      if (slug) return `<a class="wikilink" href="${ctx.base}posts/${slug}.html">${text}</a>`;
+      if (slug) return `<a class="wikilink" href="${ctx.base}${postHref(slug)}">${text}</a>`;
       return `<span class="wikilink missing" title="还没有这篇笔记，写一篇标题相同的就会自动连上">${text}</span>`;
     })
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/~~([^~]+)~~/g, "<del>$1</del>")
     .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
 }
 
+// ---------- 表格 ----------
+
+const isTableRow = (line) => /^\s*\|.*\|\s*$/.test(line);
+const isTableDivider = (line) => /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(line) && line.includes("|");
+
+const splitRow = (line) =>
+  line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((c) => c.trim());
+
+/** 从 |:---|---:|:---:| 这一行读出每列的对齐方式 */
+function readAligns(line) {
+  return splitRow(line).map((cell) => {
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    return "left";
+  });
+}
+
+function renderTable(header, aligns, rows, ctx) {
+  const th = header
+    .map((c, i) => `<th class="align-${aligns[i] || "left"}">${renderInline(escapeHtml(c), ctx)}</th>`)
+    .join("");
+  const body = rows
+    .map(
+      (r) =>
+        `<tr>${r
+          .map(
+            (c, i) =>
+              `<td class="align-${aligns[i] || "left"}">${renderInline(escapeHtml(c), ctx)}</td>`,
+          )
+          .join("")}</tr>`,
+    )
+    .join("");
+  return `<table>
+<thead><tr>${th}</tr></thead>
+<tbody>${body}</tbody>
+</table>`;
+}
+
 /**
- * 支持：标题、段落、有序/无序列表、引用、代码块、分割线、行内样式、[[双链]]
+ * 支持：标题、段落、有序/无序列表（含任务清单）、引用、代码块、表格、
+ *      分割线、行内样式、图片、[[双链]]
  * 同时收集 h2/h3 生成目录。
  */
 function markdownToHtml(md, ctx) {
@@ -151,6 +206,18 @@ function markdownToHtml(md, ctx) {
       continue;
     }
 
+    // 表格：一行 | 表头 |，下一行是 |---|---| 分隔线
+    if (isTableRow(line) && i + 1 < lines.length && isTableDivider(lines[i + 1])) {
+      flush();
+      const header = splitRow(line);
+      const aligns = readAligns(lines[i + 1]);
+      const rows = [];
+      i += 2;
+      while (i < lines.length && isTableRow(lines[i])) rows.push(splitRow(lines[i++]));
+      out.push(renderTable(header, aligns, rows, ctx));
+      continue;
+    }
+
     if (/^\s*>\s?/.test(line)) {
       flush();
       const buf = [];
@@ -171,7 +238,17 @@ function markdownToHtml(md, ctx) {
       const tag = ordered ? "ol" : "ul";
       out.push(
         `<${tag}>${items
-          .map((t) => `<li>${renderInline(escapeHtml(t), ctx)}</li>`)
+          .map((t) => {
+            // 任务清单：- [ ] 待办 / - [x] 已完成
+            const task = t.match(/^\[( |x|X)\]\s+(.*)$/);
+            if (task) {
+              const done = task[1].toLowerCase() === "x";
+              return `<li class="task-item${done ? " done" : ""}"><span class="checkbox">${
+                done ? "☑" : "☐"
+              }</span> ${renderInline(escapeHtml(task[2]), ctx)}</li>`;
+            }
+            return `<li>${renderInline(escapeHtml(t), ctx)}</li>`;
+          })
           .join("")}</${tag}>`,
       );
       continue;
@@ -373,7 +450,7 @@ function build() {
   const list = notes
     .map(
       (n) => `    <article class="note-item">
-      <h2><a href="posts/${n.slug}.html">${escapeHtml(n.title)}</a></h2>
+      <h2><a href="${postHref(n.slug)}">${escapeHtml(n.title)}</a></h2>
       <p class="meta">${dateLine(n)} ${tagChips(n.tags)}</p>
       <p class="summary">${escapeHtml(n.summary)}</p>
     </article>`,
@@ -426,7 +503,10 @@ ${
       footerBlocks.push(`      <section class="note-block">
         <p class="section-title">哪些笔记提到了它</p>
         <ul class="link-list">${back
-          .map((b) => `<li><a href="${b.slug}.html">${escapeHtml(b.title)}</a></li>`)
+          .map(
+            (b) =>
+              `<li><a href="${encodeURIComponent(b.slug)}.html">${escapeHtml(b.title)}</a></li>`,
+          )
           .join("")}</ul>
       </section>`);
     }
@@ -434,7 +514,10 @@ ${
       footerBlocks.push(`      <section class="note-block">
         <p class="section-title">同主题笔记</p>
         <ul class="link-list">${related
-          .map((r) => `<li><a href="${r.slug}.html">${escapeHtml(r.title)}</a></li>`)
+          .map(
+            (r) =>
+              `<li><a href="${encodeURIComponent(r.slug)}.html">${escapeHtml(r.title)}</a></li>`,
+          )
           .join("")}</ul>
       </section>`);
     }
@@ -481,7 +564,7 @@ ${
       <h2><a href="${encodeURIComponent(tagFile(t))}.html">${escapeHtml(t)}</a> <span class="count">${byTag.get(t).length}</span></h2>
       <ul class="link-list">${byTag
         .get(t)
-        .map((n) => `<li><a href="../posts/${n.slug}.html">${escapeHtml(n.title)}</a></li>`)
+        .map((n) => `<li><a href="../${postHref(n.slug)}">${escapeHtml(n.title)}</a></li>`)
         .join("")}</ul>
     </section>`,
     )
@@ -505,7 +588,7 @@ ${
 ${tagNotes
   .map(
     (n) => `    <article class="note-item">
-      <h2><a href="../posts/${n.slug}.html">${escapeHtml(n.title)}</a></h2>
+      <h2><a href="../${postHref(n.slug)}">${escapeHtml(n.title)}</a></h2>
       <p class="meta">${dateLine(n)}</p>
       <p class="summary">${escapeHtml(n.summary)}</p>
     </article>`,
@@ -538,7 +621,7 @@ ${[...byYear.keys()]
         .get(y)
         .map(
           (n) =>
-            `<li><span class="date">${escapeHtml(n.date || "—")}</span> <a href="posts/${n.slug}.html">${escapeHtml(n.title)}</a></li>`,
+            `<li><span class="date">${escapeHtml(n.date || "—")}</span> <a href="${postHref(n.slug)}">${escapeHtml(n.title)}</a></li>`,
         )
         .join("")}</ul>
     </section>`,
@@ -586,7 +669,7 @@ ${[...byYear.keys()]
       notes.map((n) => ({
         title: n.title,
         slug: n.slug,
-        url: `posts/${n.slug}.html`,
+        url: postHref(n.slug),
         date: n.date,
         tags: n.tags,
         text: stripMd(n.body.replace(/```[\s\S]*?```/g, " ")).slice(0, 6000),
@@ -600,8 +683,8 @@ ${[...byYear.keys()]
     .map(
       (n) => `    <item>
       <title>${escapeHtml(n.title)}</title>
-      <link>${SITE.url.replace(/\/$/, "")}/posts/${n.slug}.html</link>
-      <guid>${SITE.url.replace(/\/$/, "")}/posts/${n.slug}.html</guid>
+      <link>${SITE.url.replace(/\/$/, "")}/${postHref(n.slug)}</link>
+      <guid>${SITE.url.replace(/\/$/, "")}/${postHref(n.slug)}</guid>
       <pubDate>${n.date ? new Date(n.date).toUTCString() : new Date().toUTCString()}</pubDate>
       <description>${escapeHtml(n.summary)}</description>
     </item>`,
