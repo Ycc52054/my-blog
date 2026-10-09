@@ -28,7 +28,7 @@ const SITE = {
   author: "我",
   // 上线后换成你的域名，RSS 才会是绝对链接。
   // 也可以在部署平台里设环境变量 SITE_URL，就不用来改代码了。
-  url: process.env.SITE_URL || "https://example.com",
+  url: process.env.SITE_URL || "https://ycc52054.github.io/my-blog",
   relatedLimit: 5, // 每篇底部最多列几条「同主题」笔记
 };
 // ==================
