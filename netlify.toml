@@ -1,0 +1,7 @@
+# Netlify 用：连上 Git 仓库后它会读这个文件
+[build]
+  command = "node build.js"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"

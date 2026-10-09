@@ -1,0 +1,13 @@
+{
+  "name": "my-blog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "零依赖的静态博客：写 Markdown，生成静态 HTML，丢到任何地方都能跑。",
+  "scripts": {
+    "build": "node build.js",
+    "serve": "node serve.js",
+    "dev": "node build.js && node serve.js",
+    "new": "node new.js"
+  }
+}
